@@ -1,42 +1,75 @@
 import {
   condition,
   defineQuery,
-  defineSignal,
+  defineUpdate,
+  proxyActivities,
   setHandler,
+  uuid4,
+  workflowInfo,
 } from "@temporalio/workflow";
-import type { DemoStatus } from "./types";
+import type * as activities from "./activities";
+import type { FillOpeningInput, Offer, OfferResponse, Status } from "./types";
 
-// This neutral Workflow exists only to prove that the starter is connected.
-// Replace it with the customer Workflow you design during the assessment.
-export const continueDemo = defineSignal("continueDemo");
-export const getDemoStatus = defineQuery<DemoStatus>("getDemoStatus");
+const { sendOffer, removeFromWaitlist } = proxyActivities<typeof activities>({
+  startToCloseTimeout: "10 seconds",
+});
 
-export async function demoWorkflow(requestId: string): Promise<DemoStatus> {
-  let shouldContinue = false;
-  let status: DemoStatus = {
-    requestId,
-    phase: "started",
-    message: "The demo Workflow started.",
-  };
+export const respondToOffer = defineUpdate<string, [OfferResponse]>("respondToOffer");
+export const getOpeningStatus = defineQuery<Status>("getOpeningStatus");
 
-  setHandler(getDemoStatus, () => status);
-  setHandler(continueDemo, () => {
-    shouldContinue = true;
-  });
+export async function fillOpeningWorkflow({
+  opening,
+  candidates,
+  offerTimeoutMs,
+}: FillOpeningInput): Promise<Status> {
+  const status: Status = { opening, phase: "offering", offers: [] };
+  const latestOffer = () => status.offers.at(-1);
 
-  status = {
-    ...status,
-    phase: "waiting",
-    message: "The Workflow is durably waiting for a Signal.",
-  };
+  setHandler(getOpeningStatus, () => status);
+  setHandler(
+    respondToOffer,
+    ({ decision }) => {
+      latestOffer()!.outcome = decision === "accept" ? "accepted" : "declined";
+      return decision === "accept"
+        ? "You're booked. See you soon!"
+        : "Thanks for letting us know. You're still on our waitlist.";
+    },
+    {
+      validator: ({ offerId }) => {
+        const offer = latestOffer();
+        if (!offer || offer.offerId !== offerId || offer.outcome !== "waiting") {
+          throw new Error("This offer is no longer available.");
+        }
+      },
+    },
+  );
 
-  await condition(() => shouldContinue);
+  for (const client of candidates) {
+    const offer: Offer = {
+      offerId: uuid4(),
+      clientId: client.id,
+      clientName: client.name,
+      outcome: "waiting",
+      expiresAt: new Date(Date.now() + offerTimeoutMs).toISOString(),
+    };
+    status.offers.push(offer);
+    await sendOffer(
+      client,
+      opening,
+      `/offer.html?id=${workflowInfo().workflowId}&offer=${offer.offerId}`,
+    );
 
-  status = {
-    ...status,
-    phase: "complete",
-    message: "The Signal arrived and the Workflow completed.",
-  };
+    const answered = await condition(() => offer.outcome !== "waiting", offerTimeoutMs);
+    if (!answered) {
+      offer.outcome = "timed out";
+    } else if (offer.outcome === "accepted") {
+      status.phase = "filled";
+      status.filledBy = client.name;
+      await removeFromWaitlist(client.id);
+      return status;
+    }
+  }
+
+  status.phase = "unfilled";
   return status;
 }
-

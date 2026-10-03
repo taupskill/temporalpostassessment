@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Juniper Salon · Staff</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main>
+      <div class="row">
+        <p class="eyebrow">Juniper Salon · Staff</p>
+        <button id="sign-out" class="link-button" type="button">Sign out</button>
+      </div>
+      <h1>Fill an opening</h1>
+      <form id="new-opening" class="card">
+        <label>Date <input type="date" name="date" required /></label>
+        <label>Time <input type="time" name="time" required /></label>
+        <label>Service
+          <select name="service">
+            <option>Cut</option>
+            <option>Colour</option>
+            <option>Blow-dry</option>
+          </select>
+        </label>
+        <label>Stylist
+          <select name="stylist">
+            <option>Lena</option>
+            <option>Carla</option>
+          </select>
+        </label>
+        <button type="submit">Find a client</button>
+      </form>
+
+      <h2>Openings</h2>
+      <div id="openings"><p class="muted">No openings yet.</p></div>
+
+      <h2>Waitlist</h2>
+      <ul id="waitlist" class="card plain"></ul>
+    </main>
+    <script src="/staff.js"></script>
+  </body>
+</html>
